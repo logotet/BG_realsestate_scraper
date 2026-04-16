@@ -105,3 +105,50 @@ def export_csv(
                 ])
 
     typer.echo(f"Exported {len(listings)} listing(s) to {output}")
+
+
+@app.command("send-daily")
+def send_daily() -> None:
+    """Send the daily digest email with un-notified listings."""
+    from .config import get_settings
+    from .db.base import session_scope
+    from .email.sender import send_daily_digest
+    from .logging_setup import configure_logging
+    from .services.stats import daily_new_listings, mark_daily_notified
+
+    configure_logging()
+    settings = get_settings()
+    _ensure_db()
+
+    with session_scope() as session:
+        listings = daily_new_listings(session)
+        if not listings:
+            typer.echo("No new listings to send.")
+            return
+        send_daily_digest(settings, listings)
+        mark_daily_notified(session, [li.id for li in listings])
+
+    typer.echo(f"Sent daily digest with {len(listings)} listing(s).")
+
+
+@app.command("send-weekly")
+def send_weekly() -> None:
+    """Send the weekly digest email with all active listings."""
+    from .config import get_settings
+    from .db.base import session_scope
+    from .email.sender import send_weekly_digest
+    from .logging_setup import configure_logging
+    from .services.stats import all_active_listings
+
+    configure_logging()
+    settings = get_settings()
+    _ensure_db()
+
+    with session_scope() as session:
+        listings = all_active_listings(session)
+        if not listings:
+            typer.echo("No active listings to send.")
+            return
+        send_weekly_digest(settings, listings)
+
+    typer.echo(f"Sent weekly digest with {len(listings)} listing(s).")

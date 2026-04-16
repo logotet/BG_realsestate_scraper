@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family: Arial, Helvetica, sans-serif; color: #333; max-width: 700px; margin: 0 auto; padding: 16px;">
+
+<h2 style="color: #2c5282; border-bottom: 2px solid #2c5282; padding-bottom: 8px;">
+  {{ count }} нови обяви
+</h2>
+
+<p style="color: #666; font-size: 14px;">Ежедневен дайджест от BGScraper</p>
+
+<table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+  <thead>
+    <tr style="background: #edf2f7; text-align: left;">
+      <th style="padding: 8px; border-bottom: 2px solid #cbd5e0;">Обява</th>
+      <th style="padding: 8px; border-bottom: 2px solid #cbd5e0;">Квартал</th>
+      <th style="padding: 8px; border-bottom: 2px solid #cbd5e0; text-align: right;">Цена (EUR)</th>
+      <th style="padding: 8px; border-bottom: 2px solid #cbd5e0; text-align: right;">Площ</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for li in listings %}
+    <tr style="border-bottom: 1px solid #e2e8f0;">
+      <td style="padding: 8px;">
+        <a href="{{ li.url }}" style="color: #2b6cb0; text-decoration: none;">
+          {{ li.title or 'Без заглавие' }}
+        </a>
+        <br>
+        <span style="font-size: 12px; color: #999;">{{ li.source }}</span>
+      </td>
+      <td style="padding: 8px;">{{ li.neighborhood or '—' }}</td>
+      <td style="padding: 8px; text-align: right; font-weight: bold;">
+        {{ "{:,}".format(li.price_eur) if li.price_eur else '—' }}
+      </td>
+      <td style="padding: 8px; text-align: right;">
+        {{ li.area_sqm|round(0)|int if li.area_sqm else '—' }} m&sup2;
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<p style="font-size: 12px; color: #999; margin-top: 24px; border-top: 1px solid #e2e8f0; padding-top: 8px;">
+  BGScraper &middot; автоматичен имейл
+</p>
+
+</body>
+</html>
