@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import random
+import re
 import time
 from pathlib import Path
 
@@ -53,7 +54,7 @@ class HttpClient:
                     "image/avif,image/webp,*/*;q=0.8"
                 ),
                 "Accept-Language": "bg-BG,bg;q=0.9,en;q=0.8",
-                "Accept-Encoding": "gzip, deflate, br",
+                "Accept-Encoding": "gzip, deflate",
                 "Connection": "keep-alive",
                 "Upgrade-Insecure-Requests": "1",
             },
@@ -102,6 +103,26 @@ class HttpClient:
                 log.warning("http.retryable_status", url=url, status=resp.status_code)
                 raise RetryableHttpError(f"{resp.status_code} for {url}")
             resp.raise_for_status()
-            return resp.text
+            return _decode(resp)
 
         return _call()
+
+
+# Detect charset from HTML meta tags when httpx falls back to utf-8.
+_META_CHARSET_RE = re.compile(
+    rb'charset=["\']?\s*([a-zA-Z0-9_-]+)', re.I
+)
+
+
+def _decode(resp: httpx.Response) -> str:
+    """Decode response using the charset from Content-Type or HTML meta tag."""
+    ct_charset = resp.charset_encoding
+    if ct_charset and ct_charset.lower() != "utf-8":
+        return resp.content.decode(ct_charset, errors="replace")
+    # Some sites omit charset in Content-Type but declare it in a meta tag.
+    m = _META_CHARSET_RE.search(resp.content[:2048])
+    if m:
+        charset = m.group(1).decode("ascii").lower()
+        if charset != "utf-8":
+            return resp.content.decode(charset, errors="replace")
+    return resp.text

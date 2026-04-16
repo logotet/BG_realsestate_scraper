@@ -16,9 +16,15 @@ log = get_logger(__name__)
 _BASE = "https://www.bulgarianproperties.com"
 
 _TYPE_SLUGS: dict[PropertyType, str] = {
-    PropertyType.APARTMENT_3ROOM: "Apartments_(various_types)",
+    PropertyType.APARTMENT_3ROOM: "3-bedroom_apartments",
     PropertyType.HOUSE: "Houses",
 }
+
+# Sofia-area location suffixes in detail URLs (e.g. "_in_Sofia", "_in_Pancharevo").
+_SOFIA_LOCATIONS = (
+    "_in_Sofia", "_in_Pancharevo", "_in_Dragalevtsi", "_in_Boyana",
+    "_in_Simeonovo", "_in_Bistritsa", "_in_Zheleznitsa", "_in_German",
+)
 
 # Listing URL: /AD{code}BG_...
 _ID_RE = re.compile(r"/AD(\d+)BG")
@@ -55,12 +61,9 @@ class BulgarianPropertiesScraper(BaseScraper):
         slug = cfg.extra["slug"]
         for page in range(1, self.settings.max_list_pages + 1):
             if page == 1:
-                yield f"{_BASE}/sofia-properties/{slug}_for_sale_in_Sofia.html"
+                yield f"{_BASE}/{slug}_in_Bulgaria/index.html"
             else:
-                yield (
-                    f"{_BASE}/sofia-properties/"
-                    f"{slug}_for_sale_in_Sofia.html?page={page}"
-                )
+                yield f"{_BASE}/{slug}_in_Bulgaria/index{page - 1}.html"
 
     def parse_list_page(self, html: str, base_url: str) -> list[str]:
         soup = BeautifulSoup(html, "lxml")
@@ -72,6 +75,9 @@ class BulgarianPropertiesScraper(BaseScraper):
             if not m:
                 continue
             full = _abs(href)
+            # Results are country-wide; keep only Sofia-area listings.
+            if not any(loc in full for loc in _SOFIA_LOCATIONS):
+                continue
             if full not in seen:
                 seen.add(full)
                 urls.append(full)

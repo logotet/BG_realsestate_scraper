@@ -14,7 +14,7 @@ def _load():
 
 
 EXPECTED_SOURCES = [
-    "adres.bg",
+    # "adres.bg",  # disabled — domain unreachable since 2026-04
     "bulgarianproperties.com",
     "homes.bg",
     "imot.bg",
