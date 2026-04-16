@@ -152,3 +152,11 @@ def send_weekly() -> None:
         send_weekly_digest(settings, listings)
 
     typer.echo(f"Sent weekly digest with {len(listings)} listing(s).")
+
+
+@app.command("run-scheduler")
+def run_scheduler() -> None:
+    """Start the APScheduler loop (daily scrape + weekly digest)."""
+    from .scheduler.main import start
+
+    start()
