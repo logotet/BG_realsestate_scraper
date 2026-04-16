@@ -29,6 +29,15 @@ def _daily_job() -> None:
             mark_daily_notified(session, [li.id for li in new])
             log.info("scheduler.daily.email_sent", count=len(new))
 
+    # Regenerate static dashboard.
+    try:
+        from ..web.generate import generate_site
+
+        generate_site(settings=settings)
+        log.info("scheduler.daily.site_generated")
+    except Exception:
+        log.exception("scheduler.daily.site_generation_failed")
+
     log.info(
         "scheduler.daily.done",
         sources=len(runs),

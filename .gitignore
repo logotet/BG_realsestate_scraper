@@ -27,6 +27,9 @@ env/
 .coverage
 htmlcov/
 
+# Generated site
+site/
+
 # Data / runtime
 data/*.db
 data/*.db-journal

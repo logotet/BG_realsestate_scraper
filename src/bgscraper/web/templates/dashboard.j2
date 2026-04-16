@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="bg" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BGScraper Dashboard</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+  <style>
+    :root {
+      --pico-font-size: 15px;
+    }
+    body { padding: 1rem 0; }
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+    .stat-card {
+      background: var(--pico-card-background-color);
+      border: 1px solid var(--pico-muted-border-color);
+      border-radius: var(--pico-border-radius);
+      padding: 1rem;
+      text-align: center;
+    }
+    .stat-card .value {
+      font-size: 1.8rem;
+      font-weight: 700;
+      color: var(--pico-primary);
+      display: block;
+    }
+    .stat-card .label {
+      font-size: 0.85rem;
+      color: var(--pico-muted-color);
+    }
+    .filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      align-items: flex-end;
+      margin-bottom: 1rem;
+    }
+    .filters label { margin-bottom: 0; }
+    .filters select, .filters input {
+      margin-bottom: 0;
+      padding: 0.4rem 0.6rem;
+      font-size: 0.9rem;
+    }
+    .filter-group { display: flex; flex-direction: column; gap: 0.25rem; }
+    .filter-group label { font-size: 0.8rem; font-weight: 600; }
+    #count-display { font-size: 0.9rem; color: var(--pico-muted-color); margin-bottom: 0.5rem; }
+    table { font-size: 0.88rem; }
+    th { cursor: pointer; user-select: none; white-space: nowrap; }
+    th:hover { color: var(--pico-primary); }
+    th .sort-arrow { font-size: 0.7rem; margin-left: 0.25rem; opacity: 0.4; }
+    th.sorted-asc .sort-arrow, th.sorted-desc .sort-arrow { opacity: 1; }
+    td a { text-decoration: none; }
+    td a:hover { text-decoration: underline; }
+    .type-badge {
+      display: inline-block;
+      font-size: 0.75rem;
+      padding: 0.15rem 0.4rem;
+      border-radius: 4px;
+      background: var(--pico-secondary-background);
+      color: var(--pico-secondary);
+    }
+    .hood-table { margin-bottom: 2rem; }
+    .hood-table td:nth-child(2), .hood-table td:nth-child(3),
+    .hood-table th:nth-child(2), .hood-table th:nth-child(3) { text-align: right; }
+    footer { text-align: center; font-size: 0.8rem; color: var(--pico-muted-color); margin-top: 2rem; }
+    @media (max-width: 768px) {
+      .filters { flex-direction: column; }
+      table { font-size: 0.8rem; }
+    }
+  </style>
+</head>
+<body>
+<main class="container">
+
+  <hgroup>
+    <h1>BGScraper Dashboard</h1>
+    <p>Имоти в София &mdash; актуализирано {{ generated_at }}</p>
+  </hgroup>
+
+  {# ── Stats Cards ── #}
+  <div class="stats-grid">
+    <div class="stat-card">
+      <span class="value">{{ stats.total }}</span>
+      <span class="label">Активни обяви</span>
+    </div>
+    <div class="stat-card">
+      <span class="value">{{ stats.apartments }}</span>
+      <span class="label">Тристайни</span>
+    </div>
+    <div class="stat-card">
+      <span class="value">{{ stats.houses }}</span>
+      <span class="label">Къщи</span>
+    </div>
+    <div class="stat-card">
+      <span class="value">{{ "{:,}".format(stats.avg_price) }}</span>
+      <span class="label">Средна цена (EUR)</span>
+    </div>
+    <div class="stat-card">
+      <span class="value">{{ stats.sources }}</span>
+      <span class="label">Източници</span>
+    </div>
+  </div>
+
+  {# ── Neighborhood Summary ── #}
+  {% if stats.by_hood %}
+  <details>
+    <summary>По квартали ({{ stats.by_hood | length }})</summary>
+    <table class="hood-table">
+      <thead>
+        <tr><th>Квартал</th><th>Брой</th><th>Средна цена (EUR)</th></tr>
+      </thead>
+      <tbody>
+        {% for hood, info in stats.by_hood.items() %}
+        <tr>
+          <td>{{ hood }}</td>
+          <td>{{ info.count }}</td>
+          <td>{{ "{:,}".format(info.avg_price) if info.avg_price else "&mdash;" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </details>
+  {% endif %}
+
+  {# ── Filters ── #}
+  <div class="filters">
+    <div class="filter-group">
+      <label for="f-hood">Квартал</label>
+      <select id="f-hood">
+        <option value="">Всички</option>
+        {% for hood in stats.neighborhoods %}
+        <option value="{{ hood }}">{{ hood }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="filter-group">
+      <label for="f-type">Тип</label>
+      <select id="f-type">
+        <option value="">Всички</option>
+        <option value="apartment_3room">Тристаен</option>
+        <option value="house">Къща</option>
+      </select>
+    </div>
+    <div class="filter-group">
+      <label for="f-price-min">Цена от (EUR)</label>
+      <input type="number" id="f-price-min" placeholder="0" step="10000" min="0">
+    </div>
+    <div class="filter-group">
+      <label for="f-price-max">Цена до (EUR)</label>
+      <input type="number" id="f-price-max" placeholder="{{ stats.max_price }}" step="10000" min="0">
+    </div>
+    <div class="filter-group">
+      <label for="f-search">Търсене</label>
+      <input type="search" id="f-search" placeholder="Заглавие...">
+    </div>
+  </div>
+
+  <div id="count-display"></div>
+
+  {# ── Listings Table ── #}
+  <div style="overflow-x: auto;">
+  <table id="listings-table">
+    <thead>
+      <tr>
+        <th data-col="0" data-type="str">Обява <span class="sort-arrow">&#9650;</span></th>
+        <th data-col="1" data-type="str">Квартал <span class="sort-arrow">&#9650;</span></th>
+        <th data-col="2" data-type="num">Цена (EUR) <span class="sort-arrow">&#9650;</span></th>
+        <th data-col="3" data-type="num">Площ (m&sup2;) <span class="sort-arrow">&#9650;</span></th>
+        <th data-col="4" data-type="str">Обзавеждане <span class="sort-arrow">&#9650;</span></th>
+        <th data-col="5" data-type="str">Тип <span class="sort-arrow">&#9650;</span></th>
+        <th data-col="6" data-type="str">Източник <span class="sort-arrow">&#9650;</span></th>
+        <th data-col="7" data-type="str">Добавен <span class="sort-arrow">&#9650;</span></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for li in listings %}
+      <tr
+        data-hood="{{ li.neighborhood or '' }}"
+        data-type="{{ li.property_type or '' }}"
+        data-price="{{ li.price_eur or 0 }}"
+        data-title="{{ (li.title or '')|lower }}"
+      >
+        <td><a href="{{ li.url }}" target="_blank" rel="noopener">{{ li.title or 'Без заглавие' }}</a></td>
+        <td>{{ li.neighborhood or '&mdash;' }}</td>
+        <td>{{ "{:,}".format(li.price_eur) if li.price_eur else '&mdash;' }}</td>
+        <td>{{ li.area_sqm|round(0)|int if li.area_sqm else '&mdash;' }}</td>
+        <td>{{ li.furnishing or '&mdash;' }}</td>
+        <td><span class="type-badge">{{ 'Тристаен' if li.property_type == 'apartment_3room' else 'Къща' if li.property_type == 'house' else li.property_type or '?' }}</span></td>
+        <td>{{ li.source }}</td>
+        <td>{{ li.first_seen.strftime('%d.%m.%Y') if li.first_seen else '&mdash;' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+
+  {% if not listings %}
+  <p style="text-align:center; color: var(--pico-muted-color);">Няма активни обяви.</p>
+  {% endif %}
+
+</main>
+
+<footer>
+  <p>BGScraper &middot; генерирано на {{ generated_at }}</p>
+</footer>
+
+<script>
+(function() {
+  const table = document.getElementById('listings-table');
+  if (!table) return;
+  const tbody = table.querySelector('tbody');
+  const rows = Array.from(tbody.querySelectorAll('tr'));
+  const countEl = document.getElementById('count-display');
+
+  // ── Filtering ──
+  const fHood = document.getElementById('f-hood');
+  const fType = document.getElementById('f-type');
+  const fPriceMin = document.getElementById('f-price-min');
+  const fPriceMax = document.getElementById('f-price-max');
+  const fSearch = document.getElementById('f-search');
+
+  function applyFilters() {
+    const hood = fHood.value;
+    const type = fType.value;
+    const pMin = parseInt(fPriceMin.value) || 0;
+    const pMax = parseInt(fPriceMax.value) || Infinity;
+    const search = fSearch.value.toLowerCase().trim();
+    let visible = 0;
+
+    rows.forEach(function(row) {
+      const rHood = row.dataset.hood;
+      const rType = row.dataset.type;
+      const rPrice = parseInt(row.dataset.price) || 0;
+      const rTitle = row.dataset.title;
+
+      let show = true;
+      if (hood && rHood !== hood) show = false;
+      if (type && rType !== type) show = false;
+      if (rPrice < pMin) show = false;
+      if (rPrice > pMax) show = false;
+      if (search && rTitle.indexOf(search) === -1) show = false;
+
+      row.style.display = show ? '' : 'none';
+      if (show) visible++;
+    });
+
+    countEl.textContent = visible + ' от ' + rows.length + ' обяви';
+  }
+
+  [fHood, fType, fPriceMin, fPriceMax, fSearch].forEach(function(el) {
+    el.addEventListener('input', applyFilters);
+  });
+  applyFilters();
+
+  // ── Sorting ──
+  const headers = table.querySelectorAll('th[data-col]');
+  let currentSort = { col: -1, asc: true };
+
+  headers.forEach(function(th) {
+    th.addEventListener('click', function() {
+      const col = parseInt(th.dataset.col);
+      const type = th.dataset.type;
+      const asc = currentSort.col === col ? !currentSort.asc : true;
+      currentSort = { col: col, asc: asc };
+
+      // Reset header classes.
+      headers.forEach(function(h) { h.classList.remove('sorted-asc', 'sorted-desc'); });
+      th.classList.add(asc ? 'sorted-asc' : 'sorted-desc');
+
+      // Sort rows.
+      rows.sort(function(a, b) {
+        let va = a.children[col].textContent.trim();
+        let vb = b.children[col].textContent.trim();
+        if (type === 'num') {
+          va = parseFloat(va.replace(/[^\d.\-]/g, '')) || 0;
+          vb = parseFloat(vb.replace(/[^\d.\-]/g, '')) || 0;
+        } else {
+          va = va.toLowerCase();
+          vb = vb.toLowerCase();
+        }
+        if (va < vb) return asc ? -1 : 1;
+        if (va > vb) return asc ? 1 : -1;
+        return 0;
+      });
+
+      rows.forEach(function(row) { tbody.appendChild(row); });
+    });
+  });
+})();
+</script>
+</body>
+</html>

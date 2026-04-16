@@ -154,6 +154,20 @@ def send_weekly() -> None:
     typer.echo(f"Sent weekly digest with {len(listings)} listing(s).")
 
 
+@app.command("generate-site")
+def generate_site_cmd(
+    output: Path = typer.Option(
+        None, help="Output HTML file path (default: site/index.html)."
+    ),
+) -> None:
+    """Generate a static HTML dashboard from the listings database."""
+    from .web.generate import generate_site
+
+    _ensure_db()
+    path = generate_site(output=output)
+    typer.echo(f"Dashboard generated: {path}")
+
+
 @app.command("run-scheduler")
 def run_scheduler() -> None:
     """Start the APScheduler loop (daily scrape + weekly digest)."""
