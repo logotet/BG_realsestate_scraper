@@ -1,0 +1,51 @@
+name: Daily Scrape
+
+on:
+  schedule:
+    - cron: "0 5 * * *"  # 07:00 Europe/Sofia (UTC+2 winter / UTC+3 summer)
+  workflow_dispatch:       # allow manual runs from the GitHub UI
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+
+    env:
+      DATABASE_URL: sqlite:///./data/listings.db
+      SMTP_USER: ${{ secrets.SMTP_USER }}
+      SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+      EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+      EMAIL_TO: ${{ secrets.EMAIL_TO }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -e .
+
+      - name: Restore database
+        uses: actions/cache@v4
+        with:
+          path: data/listings.db
+          key: listings-db-${{ github.run_id }}
+          restore-keys: listings-db-
+
+      - name: Create data and logs dirs
+        run: mkdir -p data logs
+
+      - name: Run scrapers
+        run: bgscraper run-once
+
+      - name: Send daily digest
+        run: bgscraper send-daily
+
+      - name: Send weekly digest (Mondays only)
+        if: github.event_name == 'schedule'
+        run: |
+          if [ "$(date +%u)" = "1" ]; then
+            bgscraper send-weekly
+          fi
