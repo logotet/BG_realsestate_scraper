@@ -56,6 +56,8 @@ def upsert_listing(session: Session, nl: NormalizedListing, now: datetime) -> st
     existing.price_eur = nl.price_eur
     existing.price_raw = nl.price_raw
     existing.currency_raw = nl.currency_raw
+    existing.neighborhood = nl.neighborhood
+    existing.neighborhood_raw = nl.neighborhood_raw
     existing.area_sqm = nl.area_sqm
     existing.furnishing = nl.furnishing.value
     existing.description = nl.description

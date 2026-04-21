@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     source_workers: int = 3
 
     # Filters
+    price_min_eur: int = 150_000
     price_cap_apartment_eur: int = 350_000
     price_cap_house_eur: int = 550_000
     fuzzy_threshold: int = 80

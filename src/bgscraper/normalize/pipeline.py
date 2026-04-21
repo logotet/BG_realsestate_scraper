@@ -67,9 +67,31 @@ def normalize(raw: RawListing, settings: Settings) -> NormalizedListing | None:
         log.debug("normalize.drop.no_property_type", url=raw.url)
         return None
 
+    if raw.title:
+        title_low = raw.title.lower()
+        _BAD_TYPES = ("офис", "парцел", "гараж", "склад", "ателие", "магазин", "хотел",
+                      "четиристаен", "петостаен", "двустаен", "едностаен", "сграда")
+        if any(t in title_low for t in _BAD_TYPES):
+            log.debug("normalize.drop.wrong_type", url=raw.url, title=raw.title)
+            return None
+        if "строеж" in title_low:
+            log.debug("normalize.drop.in_construction", url=raw.url)
+            return None
+        _OTHER_CITIES = ("варна", "пловдив", "бургас", "перник", "плевен", "велико търново")
+        if any(c in title_low for c in _OTHER_CITIES):
+            log.debug("normalize.drop.non_sofia", url=raw.url, title=raw.title)
+            return None
+        _UI_LABELS = {"нотификации", "локация", "реклама", "категории", "обяви"}
+        if title_low in _UI_LABELS:
+            log.debug("normalize.drop.ui_label", url=raw.url, title=raw.title)
+            return None
+
     price_eur, currency_code = normalize_price(raw.price_raw, raw.currency_raw)
     if price_eur is None or price_eur <= 0:
         log.debug("normalize.drop.no_price", url=raw.url)
+        return None
+    if price_eur < settings.price_min_eur:
+        log.debug("normalize.drop.price_below_min", url=raw.url, price=price_eur, min=settings.price_min_eur)
         return None
 
     cap = (
@@ -84,6 +106,21 @@ def normalize(raw: RawListing, settings: Settings) -> NormalizedListing | None:
     hood = canonicalize(raw.neighborhood_raw, threshold=settings.fuzzy_threshold)
     if hood is None:
         log.debug("normalize.drop.hood_unmatched", url=raw.url, raw=raw.neighborhood_raw)
+        return None
+
+    # в.з. (village zone) neighborhoods allow houses only.
+    if hood.lower().startswith("в.з") and prop_type == PropertyType.APARTMENT_3ROOM:
+        log.debug("normalize.drop.vz_apartment", url=raw.url, hood=hood)
+        return None
+
+    # Манастирски ливади — houses only.
+    if hood == "Манастирски ливади" and prop_type == PropertyType.APARTMENT_3ROOM:
+        log.debug("normalize.drop.manastirski_apartment", url=raw.url)
+        return None
+
+    # Minimum apartment size.
+    if prop_type == PropertyType.APARTMENT_3ROOM and raw.area_sqm is not None and raw.area_sqm < 80:
+        log.debug("normalize.drop.apartment_too_small", url=raw.url, area=raw.area_sqm)
         return None
 
     furnishing = _classify_furnishing(raw.furnishing_raw)
