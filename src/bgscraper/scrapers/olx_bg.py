@@ -90,9 +90,15 @@ class OlxBgScraper(BaseScraper):
             source_id = url.rstrip("/").rsplit("/", 1)[-1]
 
         title = None
-        h = soup.find("h1") or soup.find("h4")
-        if h:
-            title = h.get_text(strip=True)
+        for sel in ('[data-cy="ad_title"] h1', '[data-cy="ad_title"]', 'h1[class*="title"]'):
+            el = soup.select_one(sel)
+            if el:
+                title = el.get_text(strip=True)
+                break
+        if not title:
+            h = soup.find("h1") or soup.find("h4")
+            if h:
+                title = h.get_text(strip=True)
 
         price_raw, currency_raw = None, None
         # OLX shows "332491.10 лв. / 170000 €" — prefer EUR.

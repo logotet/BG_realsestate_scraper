@@ -26,10 +26,6 @@ def load_all() -> None:
         from . import homes_bg  # noqa: F401
     except ImportError:
         pass
-    try:
-        from . import olx_bg  # noqa: F401
-    except ImportError:
-        pass
     # adres.bg disabled — domain adfresco.adres.bg unreachable since 2026-04.
     # try:
     #     from . import adres_bg  # noqa: F401
