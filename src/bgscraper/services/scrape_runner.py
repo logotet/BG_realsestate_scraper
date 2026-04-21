@@ -1,6 +1,7 @@
 """Orchestrates scraping: run scraper -> normalize -> upsert -> record run."""
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 
 from sqlalchemy.orm import Session
@@ -47,6 +48,7 @@ def upsert_listing(session: Session, nl: NormalizedListing, now: datetime) -> st
             notified_daily=False,
         )
         session.add(listing)
+        session.flush()
         return "new"
 
     # Update mutable fields, bump last_seen, reactivate if inactive.
@@ -111,24 +113,28 @@ def run_source(source: str, settings: Settings) -> ScrapeRun:
 
 
 def run_all(settings: Settings) -> list[ScrapeRun]:
-    """Run every registered scraper, collecting run records."""
+    """Run every registered scraper concurrently, collecting run records."""
     results: list[ScrapeRun] = []
-    for source in registry.all_sources():
-        try:
-            results.append(run_source(source, settings))
-        except Exception as exc:
-            log.error("runner.source_failed", source=source, error=str(exc))
-            run = ScrapeRun(
-                source=source,
-                started_at=datetime.utcnow(),
-                finished_at=datetime.utcnow(),
-                status="error",
-                items_seen=0,
-                items_new=0,
-                items_upd=0,
-                error=str(exc)[:2000],
-            )
-            with session_scope() as session:
-                session.add(run)
-            results.append(run)
+    sources = registry.all_sources()
+    with ThreadPoolExecutor(max_workers=settings.source_workers) as pool:
+        fs = {pool.submit(run_source, src, settings): src for src in sources}
+        for future in as_completed(fs):
+            src = fs[future]
+            try:
+                results.append(future.result())
+            except Exception as exc:
+                log.error("runner.source_failed", source=src, error=str(exc))
+                run = ScrapeRun(
+                    source=src,
+                    started_at=datetime.utcnow(),
+                    finished_at=datetime.utcnow(),
+                    status="error",
+                    items_seen=0,
+                    items_new=0,
+                    items_upd=0,
+                    error=str(exc)[:2000],
+                )
+                with session_scope() as session:
+                    session.add(run)
+                results.append(run)
     return results

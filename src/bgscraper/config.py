@@ -29,6 +29,8 @@ class Settings(BaseSettings):
     http_proxy: str | None = None
     stale_days: int = 3
     max_list_pages: int = 20
+    detail_workers: int = 4
+    source_workers: int = 3
 
     # Filters
     price_cap_apartment_eur: int = 350_000

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import date
 
@@ -75,6 +76,10 @@ class BaseScraper(ABC):
     @abstractmethod
     def parse_detail(self, html: str, url: str, cfg: SearchConfig) -> RawListing: ...
 
+    def _fetch_detail(self, detail_url: str, list_url: str, cfg: SearchConfig) -> RawListing:
+        d_html = self.http.get(detail_url, referer=list_url)
+        return self.parse_detail(d_html, detail_url, cfg)
+
     def run(self) -> list[RawListing]:
         results: list[RawListing] = []
         for cfg in self.search_configs:
@@ -103,20 +108,29 @@ class BaseScraper(ABC):
                 detail_urls = self.parse_list_page(list_html, list_url)
                 if not detail_urls:
                     break  # empty page → stop paginating
-                for detail_url in detail_urls:
-                    try:
-                        d_html = self.http.get(detail_url, referer=list_url)
-                        raw = self.parse_detail(d_html, detail_url, cfg)
-                        results.append(raw)
-                        ok += 1
-                    except Exception as e:
-                        fail += 1
-                        log.warning(
-                            "scraper.detail_failed",
-                            source=self.source,
-                            url=detail_url,
-                            error=str(e),
-                        )
+                with ThreadPoolExecutor(max_workers=self.settings.detail_workers) as pool:
+                    fs = {
+                        pool.submit(self._fetch_detail, u, list_url, cfg): u
+                        for u in detail_urls
+                    }
+                    for future in as_completed(fs):
+                        try:
+                            results.append(future.result())
+                            ok += 1
+                            log.info(
+                                "scraper.detail_done",
+                                source=self.source,
+                                ok=ok,
+                                fail=fail,
+                            )
+                        except Exception as e:
+                            fail += 1
+                            log.warning(
+                                "scraper.detail_failed",
+                                source=self.source,
+                                url=fs[future],
+                                error=str(e),
+                            )
                 # circuit breaker: > 50% failures after at least 10 attempts
                 if ok + fail >= 10 and fail / (ok + fail) > 0.5:
                     log.error(

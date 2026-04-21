@@ -98,10 +98,8 @@ class HomesBgScraper(BaseScraper):
                 price_raw, currency_raw = amt, "BGN"
 
         neighborhood_raw = None
-        loc_re = re.compile(r"Софи[яй]\s*[,\-–]\s*([A-Za-zА-Яа-я\s\-\.]+?)(?:\s*[,|\d])", re.I)
-        lm = loc_re.search(text)
-        if lm:
-            neighborhood_raw = lm.group(1).strip()
+        if title and "," in title:
+            neighborhood_raw = title.split(",")[0].strip()
 
         area_sqm = None
         am = _AREA_RE.search(text)

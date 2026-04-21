@@ -71,6 +71,8 @@ class ImotiNetScraper(BaseScraper):
             full = _abs(href)
             # Strip session IDs from URLs for dedup.
             clean = re.sub(r"\?sid=[^&]+", "", full)
+            if not _ID_RE.search(clean):
+                continue
             if clean not in seen:
                 seen.add(clean)
                 urls.append(full)
