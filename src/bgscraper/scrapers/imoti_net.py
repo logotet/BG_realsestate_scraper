@@ -167,7 +167,15 @@ class ImotiNetScraper(BaseScraper):
         )
         m = loc_re.search(text)
         if m:
-            return m.group(1).strip().rstrip(".,;- ")
+            result = m.group(1).strip().rstrip(".,;- ")
+            # Strip trailing "- Обява" (breadcrumb label meaning "listing")
+            result = re.sub(r"\s*[–\-]\s*обяв[аи]?\s*$", "", result, flags=re.I).strip()
+            # Strip leading property-type label like "Офис - ", "Апартамент - "
+            result = re.sub(
+                r"^(?:офис|апартамент|тристаен|двустаен|едностаен|парцел|гараж|склад|магазин|вила|хотел)\s*[–\-]\s*",
+                "", result, flags=re.I,
+            ).strip()
+            return result or None
         # Fallback: extract from URL slug.
         url_re = re.compile(r"/sofia/([a-z\-]+)/")
         um = url_re.search(url.lower())
