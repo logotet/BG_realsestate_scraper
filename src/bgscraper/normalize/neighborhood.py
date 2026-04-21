@@ -8,7 +8,8 @@ from rapidfuzz import fuzz, process
 from ..constants import NEIGHBORHOOD_ALIASES, NEIGHBORHOODS
 
 _PREFIX_NOISE = re.compile(
-    r"^(гр\.?|град|софия|sofia|район|кв\.?|квартал|бул\.?|ул\.?|м-т|вилна зона|в\.з\.?|ж\.гр\.?)\s*",
+    r"^(гр\.?|град|софия|sofia|район|кв\.?|квартал|бул\.?|ул\.?|м-т|вилна зона|в\.з\.?|ж\.гр\.?"
+    r"|офис|апартамент|тристаен|двустаен|едностаен|парцел|гараж|склад|магазин|вила|хотел)\s*",
     flags=re.IGNORECASE,
 )
 
@@ -39,8 +40,10 @@ def canonicalize(raw: str | None, threshold: int = 80) -> str | None:
             return canon
 
     # Fuzzy match against canonicals (using the cleaned form).
+    # Strip trailing numbers so "младост 3" doesn't anchor to "киноцентъра 3 ч".
+    cleaned_for_fuzzy = re.sub(r"\s+\d+\s*$", "", cleaned or raw.lower()).strip()
     match = process.extractOne(
-        cleaned or raw.lower(),
+        cleaned_for_fuzzy or cleaned or raw.lower(),
         [n.lower() for n in NEIGHBORHOODS],
         scorer=fuzz.WRatio,
     )
