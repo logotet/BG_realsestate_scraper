@@ -51,6 +51,15 @@ def test_canonicalize_miss():
     assert canonicalize("Люлин 5") is None
 
 
+def test_canonicalize_gorna_banya():
+    assert canonicalize("София, Горна баня") == "Горна Баня"
+
+
+def test_canonicalize_gorna_banya_vz_variant_wins():
+    # The village-zone variant is listed first so в.з. listings stay houses-only.
+    assert canonicalize("в.з. Горна Баня") == "в.з. Горна Баня"
+
+
 # --- property type ----------------------------------------------------------
 
 def test_classify_apartment():
