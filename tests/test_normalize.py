@@ -60,6 +60,23 @@ def test_canonicalize_gorna_banya_vz_variant_wins():
     assert canonicalize("в.з. Горна Баня") == "в.з. Горна Баня"
 
 
+def test_canonicalize_german():
+    assert canonicalize("София, с. Герман") == "Герман"
+
+
+def test_canonicalize_lozen():
+    assert canonicalize("с. Лозен") == "Лозен"
+
+
+def test_canonicalize_gorni_lozen():
+    assert canonicalize("Горни Лозен") == "Лозен"
+
+
+def test_canonicalize_lozenets_not_shadowed_by_lozen():
+    # "Лозен" is a substring of "Лозенец"; Лозенец must keep matching itself.
+    assert canonicalize("Лозенец") == "Лозенец"
+
+
 # --- property type ----------------------------------------------------------
 
 def test_classify_apartment():
@@ -95,6 +112,21 @@ def test_normalize_drops_unknown_neighborhood(settings):
         currency_raw="EUR",
         property_type=PropertyType.APARTMENT_3ROOM,
         neighborhood_raw="Люлин 5",
+    )
+    assert normalize(raw, settings) is None
+
+
+def test_normalize_drops_apartment_in_houses_only_village(settings):
+    raw = RawListing(
+        source="imot.bg",
+        source_id="1",
+        url="https://imot.bg/x",
+        title="Тристаен",
+        price_raw="200 000 EUR",
+        currency_raw="EUR",
+        property_type=PropertyType.APARTMENT_3ROOM,
+        neighborhood_raw="с. Лозен",
+        area_sqm=95.0,
     )
     assert normalize(raw, settings) is None
 

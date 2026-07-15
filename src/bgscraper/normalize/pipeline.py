@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import date
 
 from ..config import Settings
-from ..constants import Furnishing, PropertyType
+from ..constants import HOUSES_ONLY_NEIGHBORHOODS, Furnishing, PropertyType
 from ..logging_setup import get_logger
 from ..scrapers.base import RawListing
 from .currency import normalize_price
@@ -113,9 +113,9 @@ def normalize(raw: RawListing, settings: Settings) -> NormalizedListing | None:
         log.debug("normalize.drop.vz_apartment", url=raw.url, hood=hood)
         return None
 
-    # Манастирски ливади — houses only.
-    if hood == "Манастирски ливади" and prop_type == PropertyType.APARTMENT_3ROOM:
-        log.debug("normalize.drop.manastirski_apartment", url=raw.url)
+    # Specific neighborhoods where only houses are wanted.
+    if hood in HOUSES_ONLY_NEIGHBORHOODS and prop_type == PropertyType.APARTMENT_3ROOM:
+        log.debug("normalize.drop.houses_only_apartment", url=raw.url, hood=hood)
         return None
 
     # Minimum apartment size.

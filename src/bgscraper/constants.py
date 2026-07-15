@@ -54,7 +54,12 @@ NEIGHBORHOODS: list[str] = [
     "в.з. Костинброд",
     "в.з. Божурище",
     "в.з. Кокаляне",
+    "Герман",
+    "Лозен",
 ]
+
+# Neighborhoods outside в.з. zones where only houses are wanted.
+HOUSES_ONLY_NEIGHBORHOODS = {"Манастирски ливади", "Герман", "Лозен"}
 
 # Common aliases / alternate spellings mapped to canonical form.
 # Add more as real scraped data reveals variants.
