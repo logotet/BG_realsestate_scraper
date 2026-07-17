@@ -7,6 +7,7 @@ from datetime import datetime
 from sqlalchemy.orm import Session
 
 from ..config import Settings
+from ..constants import DealType
 from ..db.base import session_scope
 from ..db.models import Listing, ScrapeRun
 from ..logging_setup import get_logger
@@ -68,14 +69,18 @@ def upsert_listing(session: Session, nl: NormalizedListing, now: datetime) -> st
     return "updated"
 
 
-def run_source(source: str, settings: Settings) -> ScrapeRun:
+def run_source(
+    source: str, settings: Settings, deal_type: DealType = DealType.SALE
+) -> ScrapeRun:
     """Run a single scraper, normalize, upsert, and record a ScrapeRun."""
     started_at = datetime.utcnow()
-    log.info("runner.start", source=source)
+    log.info("runner.start", source=source, deal=deal_type.value)
 
     scraper_cls = registry.get(source)
+    if deal_type not in scraper_cls.supports:
+        raise ValueError(f"{source} does not support {deal_type.value} searches")
     with HttpClient(settings) as http:
-        scraper = scraper_cls(http, settings)
+        scraper = scraper_cls(http, settings, deal_type=deal_type)
         raw_listings = scraper.run()
 
     now = datetime.utcnow()
@@ -84,7 +89,7 @@ def run_source(source: str, settings: Settings) -> ScrapeRun:
 
     with session_scope() as session:
         for raw in raw_listings:
-            nl = normalize(raw, settings)
+            nl = normalize(raw, settings, deal_type)
             if nl is None:
                 continue
             result = upsert_listing(session, nl, now)
@@ -114,12 +119,14 @@ def run_source(source: str, settings: Settings) -> ScrapeRun:
     return run
 
 
-def run_all(settings: Settings) -> list[ScrapeRun]:
-    """Run every registered scraper concurrently, collecting run records."""
+def run_all(settings: Settings, deal_type: DealType = DealType.SALE) -> list[ScrapeRun]:
+    """Run every registered scraper that supports the deal type, concurrently."""
     results: list[ScrapeRun] = []
-    sources = registry.all_sources()
+    sources = [
+        src for src in registry.all_sources() if deal_type in registry.get(src).supports
+    ]
     with ThreadPoolExecutor(max_workers=settings.source_workers) as pool:
-        fs = {pool.submit(run_source, src, settings): src for src in sources}
+        fs = {pool.submit(run_source, src, settings, deal_type): src for src in sources}
         for future in as_completed(fs):
             src = fs[future]
             try:

@@ -6,14 +6,30 @@ from dataclasses import dataclass
 from datetime import date
 
 from ..config import Settings
-from ..constants import HOUSES_ONLY_NEIGHBORHOODS, Furnishing, PropertyType
+from ..constants import HOUSES_ONLY_NEIGHBORHOODS, DealType, Furnishing, PropertyType
 from ..logging_setup import get_logger
 from ..scrapers.base import RawListing
 from .currency import normalize_price
 from .neighborhood import canonicalize
+from .pets import refuses_pets
 from .property_type import classify
 
 log = get_logger(__name__)
+
+# Property types wanted per deal type; anything else is dropped.
+_ALLOWED_TYPES: dict[DealType, set[PropertyType]] = {
+    DealType.SALE: {PropertyType.APARTMENT_3ROOM, PropertyType.HOUSE},
+    DealType.RENT: {PropertyType.APARTMENT_2ROOM},
+}
+
+# Title keywords that mark a listing as the wrong kind of property per deal.
+_BAD_TYPES_BY_DEAL: dict[DealType, tuple[str, ...]] = {
+    DealType.SALE: ("офис", "парцел", "гараж", "склад", "ателие", "магазин", "хотел",
+                    "четиристаен", "петостаен", "двустаен", "едностаен", "сграда"),
+    DealType.RENT: ("офис", "парцел", "гараж", "склад", "ателие", "магазин", "хотел",
+                    "четиристаен", "петостаен", "тристаен", "едностаен", "многостаен",
+                    "мезонет", "къща", "вила", "сграда", "стая под наем", "квартира"),
+}
 
 
 @dataclass
@@ -58,7 +74,9 @@ def _classify_furnishing(raw: str | None) -> Furnishing:
     return Furnishing.UNKNOWN
 
 
-def normalize(raw: RawListing, settings: Settings) -> NormalizedListing | None:
+def normalize(
+    raw: RawListing, settings: Settings, deal_type: DealType = DealType.SALE
+) -> NormalizedListing | None:
     """Return a NormalizedListing or None if the listing should be dropped."""
 
     # Property type: prefer explicit, else classify from raw label.
@@ -66,12 +84,18 @@ def normalize(raw: RawListing, settings: Settings) -> NormalizedListing | None:
     if prop_type is None:
         log.debug("normalize.drop.no_property_type", url=raw.url)
         return None
+    if prop_type not in _ALLOWED_TYPES[deal_type]:
+        log.debug(
+            "normalize.drop.wrong_type_for_deal",
+            url=raw.url,
+            type=prop_type.value,
+            deal=deal_type.value,
+        )
+        return None
 
     if raw.title:
         title_low = raw.title.lower()
-        _BAD_TYPES = ("офис", "парцел", "гараж", "склад", "ателие", "магазин", "хотел",
-                      "четиристаен", "петостаен", "двустаен", "едностаен", "сграда")
-        if any(t in title_low for t in _BAD_TYPES):
+        if any(t in title_low for t in _BAD_TYPES_BY_DEAL[deal_type]):
             log.debug("normalize.drop.wrong_type", url=raw.url, title=raw.title)
             return None
         if "строеж" in title_low:
@@ -90,15 +114,19 @@ def normalize(raw: RawListing, settings: Settings) -> NormalizedListing | None:
     if price_eur is None or price_eur <= 0:
         log.debug("normalize.drop.no_price", url=raw.url)
         return None
-    if price_eur < settings.price_min_eur:
-        log.debug("normalize.drop.price_below_min", url=raw.url, price=price_eur, min=settings.price_min_eur)
+    if deal_type == DealType.RENT:
+        floor = settings.rent_price_min_eur
+        cap = settings.rent_price_cap_eur
+    else:
+        floor = settings.price_min_eur
+        cap = (
+            settings.price_cap_apartment_eur
+            if prop_type == PropertyType.APARTMENT_3ROOM
+            else settings.price_cap_house_eur
+        )
+    if price_eur < floor:
+        log.debug("normalize.drop.price_below_min", url=raw.url, price=price_eur, min=floor)
         return None
-
-    cap = (
-        settings.price_cap_apartment_eur
-        if prop_type == PropertyType.APARTMENT_3ROOM
-        else settings.price_cap_house_eur
-    )
     if price_eur > cap:
         log.debug("normalize.drop.price_above_cap", url=raw.url, price=price_eur, cap=cap)
         return None
@@ -108,19 +136,29 @@ def normalize(raw: RawListing, settings: Settings) -> NormalizedListing | None:
         log.debug("normalize.drop.hood_unmatched", url=raw.url, raw=raw.neighborhood_raw)
         return None
 
-    # в.з. (village zone) neighborhoods allow houses only.
-    if hood.lower().startswith("в.з") and prop_type == PropertyType.APARTMENT_3ROOM:
-        log.debug("normalize.drop.vz_apartment", url=raw.url, hood=hood)
-        return None
+    if deal_type == DealType.SALE:
+        # в.з. (village zone) neighborhoods allow houses only.
+        if hood.lower().startswith("в.з") and prop_type == PropertyType.APARTMENT_3ROOM:
+            log.debug("normalize.drop.vz_apartment", url=raw.url, hood=hood)
+            return None
 
-    # Specific neighborhoods where only houses are wanted.
-    if hood in HOUSES_ONLY_NEIGHBORHOODS and prop_type == PropertyType.APARTMENT_3ROOM:
-        log.debug("normalize.drop.houses_only_apartment", url=raw.url, hood=hood)
-        return None
+        # Specific neighborhoods where only houses are wanted.
+        if hood in HOUSES_ONLY_NEIGHBORHOODS and prop_type == PropertyType.APARTMENT_3ROOM:
+            log.debug("normalize.drop.houses_only_apartment", url=raw.url, hood=hood)
+            return None
 
-    # Minimum apartment size.
-    if prop_type == PropertyType.APARTMENT_3ROOM and raw.area_sqm is not None and raw.area_sqm < 80:
-        log.debug("normalize.drop.apartment_too_small", url=raw.url, area=raw.area_sqm)
+        # Minimum apartment size.
+        if (
+            prop_type == PropertyType.APARTMENT_3ROOM
+            and raw.area_sqm is not None
+            and raw.area_sqm < 80
+        ):
+            log.debug("normalize.drop.apartment_too_small", url=raw.url, area=raw.area_sqm)
+            return None
+
+    # Rentals must not explicitly refuse pets (no mention at all is fine).
+    if deal_type == DealType.RENT and refuses_pets(f"{raw.title or ''} {raw.description or ''}"):
+        log.debug("normalize.drop.pets_refused", url=raw.url)
         return None
 
     furnishing = _classify_furnishing(raw.furnishing_raw)

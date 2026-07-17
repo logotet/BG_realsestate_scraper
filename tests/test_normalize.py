@@ -1,7 +1,7 @@
 """Unit tests for the normalization layer."""
 from __future__ import annotations
 
-from bgscraper.constants import Furnishing, PropertyType
+from bgscraper.constants import DealType, Furnishing, PropertyType
 from bgscraper.normalize.currency import normalize_price, parse_amount
 from bgscraper.normalize.neighborhood import canonicalize
 from bgscraper.normalize.pipeline import normalize
@@ -87,6 +87,11 @@ def test_classify_house():
     assert classify("Къща в София") == PropertyType.HOUSE
 
 
+def test_classify_two_room():
+    assert classify("Двустаен апартамент") == PropertyType.APARTMENT_2ROOM
+    assert classify("dvustaen") is None  # slug alone isn't a recognized label
+
+
 # --- full pipeline ----------------------------------------------------------
 
 def test_normalize_drops_above_price_cap(settings):
@@ -153,3 +158,88 @@ def test_normalize_happy_path(settings):
     assert out.property_type == PropertyType.APARTMENT_3ROOM
     assert out.furnishing == Furnishing.FURNISHED
     assert "img/1.jpg" in out.images_json
+
+
+# --- rent pipeline ----------------------------------------------------------
+
+def _rent_raw(**overrides):
+    base = dict(
+        source="imot.bg",
+        source_id="7",
+        url="https://imot.bg/7",
+        title="Двустаен апартамент в Лозенец",
+        price_raw="550 €/месец",
+        currency_raw="EUR",
+        property_type=PropertyType.APARTMENT_2ROOM,
+        neighborhood_raw="София, Лозенец",
+        area_sqm=62.0,
+        description="Светъл апартамент до метростанция.",
+    )
+    base.update(overrides)
+    return RawListing(**base)
+
+
+def test_normalize_rent_happy_path(settings):
+    out = normalize(_rent_raw(), settings, DealType.RENT)
+    assert out is not None
+    assert out.price_eur == 550
+    assert out.property_type == PropertyType.APARTMENT_2ROOM
+    assert out.neighborhood == "Лозенец"
+
+
+def test_normalize_rent_price_monthly_bgn(settings):
+    out = normalize(_rent_raw(price_raw="1 100 лв./месец", currency_raw=None), settings,
+                    DealType.RENT)
+    assert out is not None
+    assert 555 <= out.price_eur <= 570  # 1100 / 1.95583 ≈ 562
+
+
+def test_normalize_rent_price_band(settings):
+    assert normalize(_rent_raw(price_raw="400 EUR"), settings, DealType.RENT) is None
+    assert normalize(_rent_raw(price_raw="750 EUR"), settings, DealType.RENT) is None
+    assert normalize(_rent_raw(price_raw="450 EUR"), settings, DealType.RENT) is not None
+    assert normalize(_rent_raw(price_raw="700 EUR"), settings, DealType.RENT) is not None
+
+
+def test_normalize_rent_drops_wrong_titles(settings):
+    for title in ("Тристаен под наем", "Къща в Бояна", "Стая под наем в Лозенец"):
+        assert normalize(_rent_raw(title=title), settings, DealType.RENT) is None
+
+
+def test_normalize_rent_drops_wrong_property_type(settings):
+    raw = _rent_raw(property_type=PropertyType.APARTMENT_3ROOM, title="Апартамент")
+    assert normalize(raw, settings, DealType.RENT) is None
+
+
+def test_normalize_sale_drops_two_room(settings):
+    """Regression guard: sale search must never keep a 2-room apartment."""
+    raw = _rent_raw(price_raw="200 000 EUR", title="Апартамент в Лозенец")
+    assert normalize(raw, settings) is None
+
+
+def test_normalize_rent_skips_sale_only_rules(settings):
+    # Small area, houses-only neighborhood, and в.з. zone are all fine for rent.
+    assert normalize(
+        _rent_raw(area_sqm=45.0, neighborhood_raw="кв. Герман",
+                  title="Двустаен в Герман"),
+        settings, DealType.RENT,
+    ) is not None
+    assert normalize(
+        _rent_raw(neighborhood_raw="в.з. Бояна", title="Двустаен в Бояна"),
+        settings, DealType.RENT,
+    ) is not None
+
+
+def test_normalize_rent_drops_pets_refused_in_description(settings):
+    raw = _rent_raw(description="Апартаментът се отдава без домашни любимци.")
+    assert normalize(raw, settings, DealType.RENT) is None
+
+
+def test_normalize_rent_drops_pets_refused_in_title(settings):
+    raw = _rent_raw(title="Двустаен в Лозенец - no pets")
+    assert normalize(raw, settings, DealType.RENT) is None
+
+
+def test_normalize_rent_keeps_pets_welcome(settings):
+    raw = _rent_raw(description="Домашни любимци са добре дошли!")
+    assert normalize(raw, settings, DealType.RENT) is not None

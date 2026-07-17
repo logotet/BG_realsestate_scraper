@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from bgscraper.constants import PropertyType
+from bgscraper.constants import DealType, PropertyType
 from bgscraper.scrapers.base import SearchConfig
 from bgscraper.scrapers.imot_bg import ImotBgScraper, _extract_source_id, _parse_date
 
@@ -32,6 +32,16 @@ def cfg_house():
         property_type=PropertyType.HOUSE,
         price_cap_eur=550_000,
         extra={"slug": "kashta"},
+    )
+
+
+@pytest.fixture()
+def cfg_rent():
+    return SearchConfig(
+        property_type=PropertyType.APARTMENT_2ROOM,
+        price_cap_eur=700,
+        deal_type=DealType.RENT,
+        extra={"slug": "dvustaen"},
     )
 
 
@@ -71,6 +81,17 @@ def test_iter_list_pages_apartment(settings, cfg_apartment):
     assert pages[0] == "https://www.imot.bg/obiavi/prodazhbi/tristaen/grad-sofiya"
     assert pages[1] == "https://www.imot.bg/obiavi/prodazhbi/grad-sofiya/tristaen/p-2"
     assert pages[2] == "https://www.imot.bg/obiavi/prodazhbi/grad-sofiya/tristaen/p-3"
+
+
+def test_iter_list_pages_rent(settings, cfg_rent):
+    scraper = ImotBgScraper.__new__(ImotBgScraper)
+    scraper.settings = settings
+    scraper.settings.max_list_pages = 2
+
+    pages = list(scraper.iter_list_pages(cfg_rent))
+    assert len(pages) == 2
+    assert pages[0] == "https://www.imot.bg/obiavi/naemi/dvustaen/grad-sofiya"
+    assert pages[1] == "https://www.imot.bg/obiavi/naemi/grad-sofiya/dvustaen/p-2"
 
 
 def test_iter_list_pages_house(settings, cfg_house):
@@ -180,3 +201,54 @@ def test_build_search_configs(settings):
     house_cfg = next(c for c in configs if c.property_type == PropertyType.HOUSE)
     assert house_cfg.price_cap_eur == 550_000
     assert house_cfg.extra["slug"] == "kashta"
+
+
+def test_build_search_configs_rent(settings):
+    scraper = ImotBgScraper.__new__(ImotBgScraper)
+    scraper.settings = settings
+    scraper.deal_type = DealType.RENT
+    configs = scraper._build_search_configs()
+
+    assert len(configs) == 1
+    cfg = configs[0]
+    assert cfg.property_type == PropertyType.APARTMENT_2ROOM
+    assert cfg.price_cap_eur == 700
+    assert cfg.deal_type == DealType.RENT
+    assert cfg.extra["slug"] == "dvustaen"
+
+
+def test_imot_bg_supports_rent():
+    assert DealType.RENT in ImotBgScraper.supports
+    assert DealType.SALE in ImotBgScraper.supports
+
+
+# -- rent detail end-to-end ---------------------------------------------------
+
+
+def test_parse_detail_rent_page(settings, cfg_rent):
+    scraper = ImotBgScraper.__new__(ImotBgScraper)
+    scraper.settings = settings
+
+    html = _read_fixture("rent_detail_page.html")
+    url = "https://www.imot.bg/obiava-2d287865577719881-dava-pod-naem-dvustaen-apartament-grad-sofiya-lozenets"
+    raw = scraper.parse_detail(html, url, cfg_rent)
+
+    assert raw.source_id == "2d287865577719881"
+    assert raw.property_type == PropertyType.APARTMENT_2ROOM
+    assert raw.property_type_raw == "dvustaen"
+    assert raw.neighborhood_raw == "Лозенец"
+    assert raw.area_sqm == 65.0
+    assert raw.price_raw is not None
+    assert "любимци" in raw.description  # the "Без домашни любимци" clause survives
+
+    # The pets clause must drop it in the rent pipeline...
+    from bgscraper.normalize.pipeline import normalize
+
+    assert normalize(raw, settings, DealType.RENT) is None
+
+    # ...and without the clause it normalizes successfully.
+    raw.description = raw.description.replace("Без домашни любимци.", "")
+    out = normalize(raw, settings, DealType.RENT)
+    assert out is not None
+    assert out.price_eur == 550
+    assert out.neighborhood == "Лозенец"

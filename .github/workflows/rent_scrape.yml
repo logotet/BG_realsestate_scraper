@@ -1,0 +1,53 @@
+name: Daily Rent Scrape
+
+on:
+  schedule:
+    - cron: "30 5 * * *"  # 07:30 Europe/Sofia, staggered after the sale run
+  workflow_dispatch:       # allow manual runs from the GitHub UI
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    env:
+      DATABASE_URL: sqlite:///./data/rent_listings.db
+      SMTP_USER: ${{ secrets.SMTP_USER }}
+      SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+      EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+      # Rent digest goes only to Vladimir, regardless of the shared EMAIL_TO secret.
+      EMAIL_TO: vladimir.vasilev09@gmail.com
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -e .
+
+      - name: Restore database
+        uses: actions/cache@v4
+        with:
+          path: data/rent_listings.db
+          key: rent-listings-db-${{ github.run_id }}
+          restore-keys: rent-listings-db-
+
+      - name: Create data and logs dirs
+        run: mkdir -p data logs
+
+      - name: Run scrapers
+        run: bgscraper run-once --deal-type rent
+
+      - name: Send daily digest
+        run: bgscraper send-daily --deal-type rent
+
+      - name: Send weekly digest (Mondays only)
+        if: github.event_name == 'schedule'
+        run: |
+          if [ "$(date +%u)" = "1" ]; then
+            bgscraper send-weekly --deal-type rent
+          fi

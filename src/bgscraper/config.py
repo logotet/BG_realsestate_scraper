@@ -20,6 +20,8 @@ class Settings(BaseSettings):
 
     # Database
     database_url: str = "sqlite:///./data/listings.db"
+    # Rent listings live in their own DB so sale queries/digests stay untouched.
+    rent_database_url: str = "sqlite:///./data/rent_listings.db"
 
     # HTTP / scraper
     request_timeout: float = 20.0
@@ -36,6 +38,8 @@ class Settings(BaseSettings):
     price_min_eur: int = 150_000
     price_cap_apartment_eur: int = 350_000
     price_cap_house_eur: int = 550_000
+    rent_price_min_eur: int = 450
+    rent_price_cap_eur: int = 700
     fuzzy_threshold: int = 80
 
     # Email

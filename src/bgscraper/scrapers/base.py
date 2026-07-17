@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from datetime import date
 
 from ..config import Settings
-from ..constants import PropertyType
+from ..constants import DealType, PropertyType
 from ..logging_setup import get_logger
 from .http import HttpClient
 
@@ -40,6 +40,7 @@ class RawListing:
 class SearchConfig:
     property_type: PropertyType
     price_cap_eur: int
+    deal_type: DealType = DealType.SALE
     # Free-form extra fields per site (e.g. a search URL template).
     extra: dict[str, object] = field(default_factory=dict)
 
@@ -48,6 +49,7 @@ class BaseScraper(ABC):
     """Subclass contract:
 
     - ``source``: canonical source name stored in the DB.
+    - ``supports``: deal types the scraper can search (sale by default).
     - ``search_configs``: one per (property_type, price_cap) to iterate.
     - ``iter_list_pages``: yields list-page URLs (pagination) for a config.
     - ``parse_list_page``: list-page HTML -> detail URLs.
@@ -55,13 +57,27 @@ class BaseScraper(ABC):
     """
 
     source: str
+    supports: frozenset[DealType] = frozenset({DealType.SALE})
+    # Class-level default so tests constructing via ``cls.__new__`` still work.
+    deal_type: DealType = DealType.SALE
 
-    def __init__(self, http: HttpClient, settings: Settings) -> None:
+    def __init__(
+        self, http: HttpClient, settings: Settings, deal_type: DealType = DealType.SALE
+    ) -> None:
         self.http = http
         self.settings = settings
+        self.deal_type = deal_type
         self.search_configs: list[SearchConfig] = self._build_search_configs()
 
     def _build_search_configs(self) -> list[SearchConfig]:
+        if self.deal_type == DealType.RENT:
+            return [
+                SearchConfig(
+                    PropertyType.APARTMENT_2ROOM,
+                    self.settings.rent_price_cap_eur,
+                    deal_type=DealType.RENT,
+                ),
+            ]
         return [
             SearchConfig(PropertyType.APARTMENT_3ROOM, self.settings.price_cap_apartment_eur),
             SearchConfig(PropertyType.HOUSE, self.settings.price_cap_house_eur),

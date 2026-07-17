@@ -8,6 +8,7 @@ from email.mime.text import MIMEText
 from jinja2 import Environment, PackageLoader
 
 from ..config import Settings
+from ..constants import DealType
 from ..logging_setup import get_logger
 
 log = get_logger(__name__)
@@ -49,20 +50,28 @@ def send_html(settings: Settings, subject: str, html_body: str) -> None:
     log.info("email.sent", subject=subject, to=settings.email_to)
 
 
-def send_daily_digest(settings: Settings, listings: list) -> None:
+def _subject_prefix(deal_type: DealType) -> str:
+    return "[BGScraper Наеми]" if deal_type == DealType.RENT else "[BGScraper]"
+
+
+def send_daily_digest(
+    settings: Settings, listings: list, deal_type: DealType = DealType.SALE
+) -> None:
     """Send the daily digest of new listings."""
     if not listings:
         log.info("email.daily.no_new_listings")
         return
     html = render_daily(listings)
-    send_html(settings, f"[BGScraper] {len(listings)} нови обяви", html)
+    send_html(settings, f"{_subject_prefix(deal_type)} {len(listings)} нови обяви", html)
 
 
-def send_weekly_digest(settings: Settings, listings: list) -> None:
+def send_weekly_digest(
+    settings: Settings, listings: list, deal_type: DealType = DealType.SALE
+) -> None:
     """Send the weekly digest of all active listings."""
     html = render_weekly(listings)
     send_html(
         settings,
-        f"[BGScraper] Седмичен обзор: {len(listings)} активни обяви",
+        f"{_subject_prefix(deal_type)} Седмичен обзор: {len(listings)} активни обяви",
         html,
     )

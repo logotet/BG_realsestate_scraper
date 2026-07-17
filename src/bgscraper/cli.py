@@ -2,12 +2,31 @@
 from __future__ import annotations
 
 import csv
+import os
 import sys
 from pathlib import Path
 
 import typer
 
+from .constants import DealType
+
 app = typer.Typer(help="bgscraper — Bulgarian real estate scraper CLI.")
+
+_DEAL_TYPE_OPTION = typer.Option(
+    DealType.SALE, "--deal-type", help="Search profile: 'sale' or 'rent'."
+)
+
+
+def _apply_deal_type_env(deal_type: DealType) -> None:
+    """Point DATABASE_URL at the rent DB unless the caller already set it.
+
+    Must run before configure_logging()/get_settings()/db imports: the engine
+    is built at first import from the lru-cached settings.
+    """
+    if deal_type == DealType.RENT and "DATABASE_URL" not in os.environ:
+        from .config import Settings
+
+        os.environ["DATABASE_URL"] = Settings().rent_database_url
 
 
 def _ensure_db() -> None:
@@ -20,8 +39,11 @@ def _ensure_db() -> None:
 @app.command()
 def run_once(
     source: str = typer.Option("all", help="Scraper source name, or 'all'."),
+    deal_type: DealType = _DEAL_TYPE_OPTION,
 ) -> None:
     """Run scrapers once, store results, and expire stale listings."""
+    _apply_deal_type_env(deal_type)
+
     from .config import get_settings
     from .logging_setup import configure_logging
     from .services.expiration import expire_stale
@@ -32,9 +54,9 @@ def run_once(
     _ensure_db()
 
     if source == "all":
-        runs = run_all(settings)
+        runs = run_all(settings, deal_type)
     else:
-        runs = [run_source(source, settings)]
+        runs = [run_source(source, settings, deal_type)]
 
     expired = expire_stale(settings)
 
@@ -53,8 +75,10 @@ def list_sources() -> None:
 
 
 @app.command()
-def stats() -> None:
+def stats(deal_type: DealType = _DEAL_TYPE_OPTION) -> None:
     """Print active listing statistics."""
+    _apply_deal_type_env(deal_type)
+
     from .db.base import session_scope
     from .db.models import Listing
 
@@ -78,8 +102,11 @@ def stats() -> None:
 @app.command("export-csv")
 def export_csv(
     output: Path = typer.Option(Path("listings.csv"), help="Output CSV file path."),
+    deal_type: DealType = _DEAL_TYPE_OPTION,
 ) -> None:
     """Export active listings to CSV."""
+    _apply_deal_type_env(deal_type)
+
     from .db.base import session_scope
     from .services.stats import all_active_listings
 
@@ -108,8 +135,10 @@ def export_csv(
 
 
 @app.command("send-daily")
-def send_daily() -> None:
+def send_daily(deal_type: DealType = _DEAL_TYPE_OPTION) -> None:
     """Send the daily digest email with un-notified listings."""
+    _apply_deal_type_env(deal_type)
+
     from .config import get_settings
     from .db.base import session_scope
     from .email.sender import send_daily_digest
@@ -125,15 +154,17 @@ def send_daily() -> None:
         if not listings:
             typer.echo("No new listings to send.")
             return
-        send_daily_digest(settings, listings)
+        send_daily_digest(settings, listings, deal_type)
         mark_daily_notified(session, [li.id for li in listings])
 
     typer.echo(f"Sent daily digest with {len(listings)} listing(s).")
 
 
 @app.command("send-weekly")
-def send_weekly() -> None:
+def send_weekly(deal_type: DealType = _DEAL_TYPE_OPTION) -> None:
     """Send the weekly digest email with all active listings."""
+    _apply_deal_type_env(deal_type)
+
     from .config import get_settings
     from .db.base import session_scope
     from .email.sender import send_weekly_digest
@@ -149,7 +180,7 @@ def send_weekly() -> None:
         if not listings:
             typer.echo("No active listings to send.")
             return
-        send_weekly_digest(settings, listings)
+        send_weekly_digest(settings, listings, deal_type)
 
     typer.echo(f"Sent weekly digest with {len(listings)} listing(s).")
 

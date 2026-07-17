@@ -4,7 +4,13 @@ from __future__ import annotations
 from enum import Enum
 
 
+class DealType(str, Enum):
+    SALE = "sale"
+    RENT = "rent"
+
+
 class PropertyType(str, Enum):
+    APARTMENT_2ROOM = "apartment_2room"
     APARTMENT_3ROOM = "apartment_3room"
     HOUSE = "house"
 

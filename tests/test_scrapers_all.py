@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from bgscraper.constants import PropertyType
+from bgscraper.constants import DealType, PropertyType
 from bgscraper.scrapers.base import SearchConfig
 from bgscraper.scrapers.registry import SCRAPERS, all_sources, load_all
 
@@ -20,7 +20,7 @@ EXPECTED_SOURCES = [
     "imot.bg",
     "imoteka.bg",
     "imoti.net",
-    "olx.bg",
+    # "olx.bg",  # disabled — import removed from registry.load_all()
     "yavlena.com",
 ]
 
@@ -73,3 +73,13 @@ def test_build_search_configs_has_both_types(source, settings):
     types = {c.property_type for c in configs}
     assert PropertyType.APARTMENT_3ROOM in types
     assert PropertyType.HOUSE in types
+
+
+@pytest.mark.parametrize("source", EXPECTED_SOURCES)
+def test_only_imot_bg_supports_rent(source):
+    cls = SCRAPERS[source]
+    if source == "imot.bg":
+        assert DealType.RENT in cls.supports
+    else:
+        assert DealType.RENT not in cls.supports
+    assert DealType.SALE in cls.supports

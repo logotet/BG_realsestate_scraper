@@ -7,7 +7,7 @@ from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup, Tag
 
-from ..constants import PropertyType
+from ..constants import DealType, PropertyType
 from ..logging_setup import get_logger
 from .base import BaseScraper, RawListing, SearchConfig
 from .registry import register
@@ -16,10 +16,21 @@ log = get_logger(__name__)
 
 _BASE = "https://www.imot.bg"
 
-# URL slugs per property type on imot.bg.
+# URL slugs per property type on imot.bg (sale search).
 _TYPE_SLUGS: dict[PropertyType, str] = {
     PropertyType.APARTMENT_3ROOM: "tristaen",
     PropertyType.HOUSE: "kashta",
+}
+
+# URL slugs per property type on imot.bg (rent search).
+_RENT_TYPE_SLUGS: dict[PropertyType, str] = {
+    PropertyType.APARTMENT_2ROOM: "dvustaen",
+}
+
+# URL path segment per deal type: /obiavi/prodazhbi/... vs /obiavi/naemi/...
+_DEAL_SEGMENTS: dict[DealType, str] = {
+    DealType.SALE: "prodazhbi",
+    DealType.RENT: "naemi",
 }
 
 # imot.bg shows 40 listings per page.
@@ -82,8 +93,19 @@ def _parse_date(text: str):
 @register
 class ImotBgScraper(BaseScraper):
     source = "imot.bg"
+    supports = frozenset({DealType.SALE, DealType.RENT})
 
     def _build_search_configs(self) -> list[SearchConfig]:
+        if self.deal_type == DealType.RENT:
+            return [
+                SearchConfig(
+                    property_type=ptype,
+                    price_cap_eur=self.settings.rent_price_cap_eur,
+                    deal_type=DealType.RENT,
+                    extra={"slug": slug},
+                )
+                for ptype, slug in _RENT_TYPE_SLUGS.items()
+            ]
         configs: list[SearchConfig] = []
         for ptype, slug in _TYPE_SLUGS.items():
             cap = (
@@ -102,11 +124,12 @@ class ImotBgScraper(BaseScraper):
 
     def iter_list_pages(self, cfg: SearchConfig) -> Iterator[str]:
         slug = cfg.extra["slug"]
-        # Page 1: /obiavi/prodazhbi/{slug}/grad-sofiya
-        yield f"{_BASE}/obiavi/prodazhbi/{slug}/grad-sofiya"
-        # Pages 2+: /obiavi/prodazhbi/grad-sofiya/{slug}/p-{N}
+        seg = _DEAL_SEGMENTS[cfg.deal_type]
+        # Page 1: /obiavi/{seg}/{slug}/grad-sofiya
+        yield f"{_BASE}/obiavi/{seg}/{slug}/grad-sofiya"
+        # Pages 2+: /obiavi/{seg}/grad-sofiya/{slug}/p-{N}
         for page in range(2, self.settings.max_list_pages + 1):
-            yield f"{_BASE}/obiavi/prodazhbi/grad-sofiya/{slug}/p-{page}"
+            yield f"{_BASE}/obiavi/{seg}/grad-sofiya/{slug}/p-{page}"
 
     def parse_list_page(self, html: str, base_url: str) -> list[str]:
         soup = BeautifulSoup(html, "lxml")

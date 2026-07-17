@@ -182,3 +182,12 @@ class TestStats:
         listing_n = db_session.query(Listing).filter_by(source_id="n").one()
         assert listing_m.notified_daily is True
         assert listing_n.notified_daily is False
+
+
+class TestDealTypeSupport:
+    def test_run_source_rejects_unsupported_deal_type(self, settings):
+        from bgscraper.constants import DealType
+        from bgscraper.services.scrape_runner import run_source
+
+        with pytest.raises(ValueError, match="does not support rent"):
+            run_source("homes.bg", settings, DealType.RENT)
