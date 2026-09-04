@@ -1,11 +1,11 @@
-"""Canonicalize raw neighborhood strings to the fixed NEIGHBORHOODS list."""
+"""Canonicalize raw neighborhood strings to the fixed per-deal neighborhood set."""
 from __future__ import annotations
 
 import re
 
 from rapidfuzz import fuzz, process
 
-from ..constants import NEIGHBORHOOD_ALIASES, NEIGHBORHOODS
+from ..constants import NEIGHBORHOOD_ALIASES, NEIGHBORHOODS_BY_DEAL, DealType
 
 _PREFIX_NOISE = re.compile(
     r"^(гр\.?|град|софия|sofia|район|кв\.?|квартал|бул\.?|ул\.?|м-т|вилна зона|в\.з\.?|ж\.гр\.?"
@@ -25,17 +25,25 @@ def _clean(text: str) -> str:
     return t
 
 
-def canonicalize(raw: str | None, threshold: int = 80) -> str | None:
+def canonicalize(
+    raw: str | None,
+    threshold: int = 80,
+    deal_type: DealType = DealType.SALE,
+) -> str | None:
     if not raw:
         return None
+    names = NEIGHBORHOODS_BY_DEAL[deal_type]
+
     # Try the raw string against the alias map first (match against cleaned key).
     cleaned = _clean(raw)
-    if cleaned in NEIGHBORHOOD_ALIASES:
-        return NEIGHBORHOOD_ALIASES[cleaned]
+    alias = NEIGHBORHOOD_ALIASES.get(cleaned)
+    if alias is not None:
+        # An alias may point at a name outside this deal's universe (e.g. rent-only).
+        return alias if alias in names else None
 
     # Substring shortcut: canonical name appears inside the raw text.
     low_raw = raw.lower()
-    for canon in NEIGHBORHOODS:
+    for canon in names:
         if canon.lower() in low_raw:
             return canon
 
@@ -44,7 +52,7 @@ def canonicalize(raw: str | None, threshold: int = 80) -> str | None:
     cleaned_for_fuzzy = re.sub(r"\s+\d+\s*$", "", cleaned or raw.lower()).strip()
     match = process.extractOne(
         cleaned_for_fuzzy or cleaned or raw.lower(),
-        [n.lower() for n in NEIGHBORHOODS],
+        [n.lower() for n in names],
         scorer=fuzz.WRatio,
     )
     if match is None:
@@ -52,4 +60,4 @@ def canonicalize(raw: str | None, threshold: int = 80) -> str | None:
     _, score, idx = match
     if score < threshold:
         return None
-    return NEIGHBORHOODS[idx]
+    return names[idx]

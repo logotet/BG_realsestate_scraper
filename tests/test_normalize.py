@@ -77,6 +77,28 @@ def test_canonicalize_lozenets_not_shadowed_by_lozen():
     assert canonicalize("Лозенец") == "Лозенец"
 
 
+def test_canonicalize_rent_only_neighborhoods():
+    assert canonicalize("София, Дианабад", deal_type=DealType.RENT) == "Дианабад"
+    assert canonicalize("кв. Гео Милев", deal_type=DealType.RENT) == "Гео Милев"
+    assert canonicalize("Изток, ул. Тинтява", deal_type=DealType.RENT) == "Изток"
+
+
+def test_canonicalize_rent_only_neighborhoods_absent_from_sale():
+    # The sale search universe must stay unchanged.
+    for raw in ("София, Дианабад", "кв. Гео Милев", "Изток, ул. Тинтява"):
+        assert canonicalize(raw) is None
+        assert canonicalize(raw, deal_type=DealType.SALE) is None
+
+
+def test_canonicalize_malinova_dolina_not_stolen_by_iztok():
+    # "Изток" is rent-only and would otherwise fuzzy-match this raw string.
+    for deal in (DealType.SALE, DealType.RENT):
+        assert (
+            canonicalize("Малинова долина изток", deal_type=deal)
+            == "в.з Малинова Долина"
+        )
+
+
 # --- property type ----------------------------------------------------------
 
 def test_classify_apartment():
@@ -243,3 +265,27 @@ def test_normalize_rent_drops_pets_refused_in_title(settings):
 def test_normalize_rent_keeps_pets_welcome(settings):
     raw = _rent_raw(description="Домашни любимци са добре дошли!")
     assert normalize(raw, settings, DealType.RENT) is not None
+
+
+def test_normalize_rent_keeps_rent_only_neighborhood(settings):
+    out = normalize(
+        _rent_raw(neighborhood_raw="кв. Гео Милев", title="Двустаен в Гео Милев"),
+        settings, DealType.RENT,
+    )
+    assert out is not None
+    assert out.neighborhood == "Гео Милев"
+
+
+def test_normalize_sale_drops_rent_only_neighborhood(settings):
+    raw = RawListing(
+        source="imot.bg",
+        source_id="1",
+        url="https://imot.bg/x",
+        title="Тристаен",
+        price_raw="200 000 EUR",
+        currency_raw="EUR",
+        property_type=PropertyType.APARTMENT_3ROOM,
+        neighborhood_raw="София, Дианабад",
+        area_sqm=95.0,
+    )
+    assert normalize(raw, settings) is None

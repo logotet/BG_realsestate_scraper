@@ -15,14 +15,16 @@ pipeline (`--deal-type` on the CLI, default `sale`):
 
 - **sale** — 3-room apartments and houses, €150k–550k.
 - **rent** — 2-room apartments, €450–700/month, drops ads that explicitly refuse pets
-  (`normalize/pets.py`; no mention of pets = kept). Rent listings live in a **separate
-  SQLite DB** (`rent_database_url`, default `data/rent_listings.db`) so all queries,
-  digests, and the `notified_daily` flag stay per-profile with no schema changes. The
-  CLI points `DATABASE_URL` at the rent DB when `--deal-type rent` is passed and the
-  env var isn't already set. Scrapers opt into rent via a `supports` class attribute —
-  currently only `imot.bg` (`prodazhbi`→`naemi` URL segment, slug `dvustaen`). The rent
-  cron is `.github/workflows/rent_scrape.yml`; the local APScheduler and the HTML
-  dashboard remain sale-only.
+  (`normalize/pets.py`; no mention of pets = kept). Rent searches a slightly wider
+  neighborhood set: the shared list plus `RENT_ONLY_NEIGHBORHOODS` (Дианабад,
+  Гео Милев, Изток), which the sale profile never matches. Rent listings live
+  in a **separate SQLite DB** (`rent_database_url`, default `data/rent_listings.db`)
+  so all queries, digests, and the `notified_daily` flag stay per-profile with no
+  schema changes. The CLI points `DATABASE_URL` at the rent DB when `--deal-type rent`
+  is passed and the env var isn't already set. Scrapers opt into rent via a `supports`
+  class attribute — currently only `imot.bg` (`prodazhbi`→`naemi` URL segment, slug
+  `dvustaen`). The rent cron is `.github/workflows/rent_scrape.yml`; the local
+  APScheduler and the HTML dashboard remain sale-only.
 
 The repository root is the `BG_realsestate_scraper/` directory (the package is `bgscraper`,
 under `src/`).
@@ -109,10 +111,13 @@ import line to `load_all()`.
   fuzzy threshold, delays, worker counts, SMTP, and scheduler times all live here.
 - **Neighborhoods** (`constants.py`): the fixed `NEIGHBORHOODS` list plus
   `NEIGHBORHOOD_ALIASES` define the entire search universe;
-  `HOUSES_ONLY_NEIGHBORHOODS` lists non-в.з. areas where apartments are dropped.
-  `normalize/neighborhood.py` canonicalizes raw strings via alias map → substring →
-  rapidfuzz `WRatio` (threshold from `fuzzy_threshold`). Editing the neighborhood set
-  is a deliberate product decision, not a refactor.
+  `HOUSES_ONLY_NEIGHBORHOODS` lists non-в.з. areas where apartments are dropped, and
+  `RENT_ONLY_NEIGHBORHOODS` adds rent-only areas. `NEIGHBORHOODS_BY_DEAL` maps each
+  `DealType` to its active list, so `canonicalize(raw, threshold, deal_type)` in
+  `normalize/neighborhood.py` filters per profile (alias map → substring → rapidfuzz
+  `WRatio`, threshold from `fuzzy_threshold`); an alias resolving outside the active
+  list is dropped. Editing the neighborhood set is a deliberate product decision, not
+  a refactor.
 - **DB** (`db/base.py`, `db/models.py`): SQLAlchemy 2.0 (typed `Mapped` columns),
   SQLite by default at `data/listings.db`. `session_scope()` is the
   commit/rollback context manager. The engine sets `check_same_thread=False` because

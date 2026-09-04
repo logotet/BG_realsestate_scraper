@@ -131,7 +131,9 @@ def normalize(
         log.debug("normalize.drop.price_above_cap", url=raw.url, price=price_eur, cap=cap)
         return None
 
-    hood = canonicalize(raw.neighborhood_raw, threshold=settings.fuzzy_threshold)
+    hood = canonicalize(
+        raw.neighborhood_raw, threshold=settings.fuzzy_threshold, deal_type=deal_type
+    )
     if hood is None:
         log.debug("normalize.drop.hood_unmatched", url=raw.url, raw=raw.neighborhood_raw)
         return None

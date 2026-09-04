@@ -67,6 +67,20 @@ NEIGHBORHOODS: list[str] = [
 # Neighborhoods outside в.з. zones where only houses are wanted.
 HOUSES_ONLY_NEIGHBORHOODS = {"Манастирски ливади", "Герман", "Лозен"}
 
+# Extra neighborhoods searched for rentals only (not part of the sale universe).
+RENT_ONLY_NEIGHBORHOODS: list[str] = [
+    "Дианабад",
+    "Гео Милев",
+    "Изток",
+]
+
+# Active canonical neighborhood set per deal type. Rent-only names come last so the
+# ordered substring match in normalize/neighborhood.py still prefers longer canonicals.
+NEIGHBORHOODS_BY_DEAL: dict[DealType, list[str]] = {
+    DealType.SALE: NEIGHBORHOODS,
+    DealType.RENT: NEIGHBORHOODS + RENT_ONLY_NEIGHBORHOODS,
+}
+
 # Common aliases / alternate spellings mapped to canonical form.
 # Add more as real scraped data reveals variants.
 NEIGHBORHOOD_ALIASES: dict[str, str] = {
@@ -90,6 +104,10 @@ NEIGHBORHOOD_ALIASES: dict[str, str] = {
     "божурище": "в.з. Божурище",
     "кокаляне": "в.з. Кокаляне",
     "косанин дол": "в.з. Косанин дол",
+    # Pin Малинова долина before the rent-only "Изток" can fuzzy-steal it.
+    "малинова долина": "в.з Малинова Долина",
+    "малинова долина изток": "в.з Малинова Долина",
+    "малинова долина запад": "в.з Малинова Долина",
 }
 
 SOFIA_CITY_NAMES = {"софия", "sofia", "гр. софия", "гр.софия"}
